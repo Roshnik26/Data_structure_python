@@ -245,7 +245,83 @@ print("\n[DONE] Step 9")
 
 # %% [markdown]
 # ---
-# ## Step 10: Drop Cell_Viability_pct + Label_Viability_Flag (Q4)
+# ## Step 10: Derive Target Variable from Cell_Viability_pct
+#
+# Apply the 4-band toxicity scale to actual numeric viability values
+# BEFORE dropping Cell_Viability_pct (must run before Step 11).
+#
+# Band scale:
+#   80–100% → Low / Negligible toxicity   → Toxicity_Level = 0
+#   60–80%  → Mild to Moderate toxicity   → Toxicity_Level = 1
+#   40–60%  → Significant toxicity        → Toxicity_Level = 2
+#   < 40%   → High toxicity (cell death)  → Toxicity_Level = 3
+#
+# Binary threshold: <60% = Toxic (1)  |  ≥60% = Non-toxic (0)
+#   Rationale: "Significant toxicity" begins at <60% viability.
+#   Rows with missing viability fall back to the expert Toxicity_Binary label.
+
+# %%
+def viability_to_level(v):
+    """4-class toxicity level from cell viability %."""
+    if pd.isna(v):
+        return np.nan
+    if v >= 80:
+        return 0   # Low / Negligible
+    if v >= 60:
+        return 1   # Mild to Moderate
+    if v >= 40:
+        return 2   # Significant
+    return 3       # High (cell death / damage)
+
+def viability_to_binary(v):
+    """Binary label: 1 = Toxic (<60%), 0 = Non-toxic (>=60%)."""
+    if pd.isna(v):
+        return np.nan
+    return 1 if v < 60 else 0
+
+# --- Apply to viability column ---
+if 'Cell_Viability_pct' in df.columns:
+    df['Toxicity_Level'] = df['Cell_Viability_pct'].apply(viability_to_level)
+    df['Toxicity_Label'] = df['Cell_Viability_pct'].apply(viability_to_binary)
+    print(f"Viability values used for labeling: {df['Cell_Viability_pct'].notna().sum():,}")
+else:
+    df['Toxicity_Level'] = np.nan
+    df['Toxicity_Label'] = np.nan
+    print("WARNING: Cell_Viability_pct not found — labels will come from fallback only.")
+
+# --- Fallback: fill missing from expert Toxicity_Binary label ---
+fallback_binary = {'Toxic': 1, 'Non-toxic': 0}
+fallback_level  = {'Toxic': 2, 'Non-toxic': 0}   # Toxic ~ significant level; Non-toxic ~ low
+
+missing_label = df['Toxicity_Label'].isna()
+df.loc[missing_label, 'Toxicity_Label'] = df.loc[missing_label, 'Toxicity_Binary'].map(fallback_binary)
+df.loc[missing_label, 'Toxicity_Level'] = df.loc[missing_label, 'Toxicity_Binary'].map(fallback_level)
+
+print(f"Fallback applied to {missing_label.sum():,} rows (no viability data).")
+
+# --- Summary ---
+n_toxic    = (df['Toxicity_Label'] == 1).sum()
+n_nontoxic = (df['Toxicity_Label'] == 0).sum()
+n_excluded = df['Toxicity_Label'].isna().sum()
+n_labeled  = n_toxic + n_nontoxic
+
+print("\n" + "=" * 58)
+print("  TOXICITY BAND SUMMARY  (threshold: <60% viability = Toxic)")
+print("=" * 58)
+print(f"  Level 0 (80–100%): {(df['Toxicity_Level']==0).sum():>5,}  — Low / Negligible")
+print(f"  Level 1 (60–80%): {(df['Toxicity_Level']==1).sum():>5,}  — Mild to Moderate")
+print(f"  Level 2 (40–60%): {(df['Toxicity_Level']==2).sum():>5,}  — Significant")
+print(f"  Level 3 (  <40%): {(df['Toxicity_Level']==3).sum():>5,}  — High")
+print(f"  ──────────────────────────────────────────")
+print(f"  Non-toxic (0): {n_nontoxic:>5,}  |  Toxic (1): {n_toxic:>5,}")
+print(f"  Labeled total: {n_labeled:>5,}  |  Excluded (NaN): {n_excluded:,}")
+if n_labeled > 0:
+    print(f"  Class balance: {n_toxic/n_labeled*100:.1f}% Toxic  |  {n_nontoxic/n_labeled*100:.1f}% Non-toxic")
+print("\n[DONE] Step 10")
+
+# %% [markdown]
+# ---
+# ## Step 11: Drop Cell_Viability_pct + Label_Viability_Flag (Q4)
 
 # %%
 cols_to_drop = ['Cell_Viability_pct', 'Label_Viability_Flag']
@@ -255,28 +331,48 @@ for col in cols_to_drop:
         print(f"  Dropping '{col}'")
 df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
 print(f"After: {df.shape[1]} columns")
-print("\n[DONE] Step 10")
+print("\n[DONE] Step 11")
 
 # %% [markdown]
 # ---
-# ## Step 11: Drop DOI_Reference (Q10)
+# ## Step 12: Drop DOI_Reference (Q10)
 
 # %%
 if 'DOI_Reference' in df.columns:
     print(f"Dropping DOI_Reference ({df['DOI_Reference'].notna().sum()} non-null)")
     df.drop(columns=['DOI_Reference'], inplace=True)
 print(f"Columns: {df.shape[1]}")
-print("\n[DONE] Step 11")
+print("\n[DONE] Step 12")
 
 # %% [markdown]
 # ---
-# ## Step 12: Final Summary + Save
+# ## Step 13: Export ML-Ready Dataset
+
+# %%
+# Full dataset (all rows, includes rows with NaN Toxicity_Label)
+output_full = DATA_DIR / 'version 2 dataset.xlsx'
+df.to_excel(output_full, index=False, engine='openpyxl')
+print(f"Full dataset saved:      {output_full}  [{df.shape[0]} rows x {df.shape[1]} cols]")
+
+# Supervised ML subset — only rows with a definite 0/1 label
+df_ml = df[df['Toxicity_Label'].notna()].copy()
+df_ml['Toxicity_Label'] = df_ml['Toxicity_Label'].astype(int)
+df_ml['Toxicity_Level']  = df_ml['Toxicity_Level'].astype(int)
+
+output_ml = DATA_DIR / 'ml_ready_dataset.csv'
+df_ml.to_csv(output_ml, index=False)
+print(f"ML-ready CSV saved:      {output_ml}  [{df_ml.shape[0]} rows x {df_ml.shape[1]} cols]")
+
+# %% [markdown]
+# ---
+# ## Step 14: Final Summary
 
 # %%
 print("=" * 60)
 print("  PREPROCESSING SUMMARY")
 print("=" * 60)
-print(f"\nDataset: {df.shape[0]} rows x {df.shape[1]} columns")
+print(f"\nFull dataset:    {df.shape[0]} rows x {df.shape[1]} columns")
+print(f"ML-ready subset: {df_ml.shape[0]} rows x {df_ml.shape[1]} columns")
 
 print(f"\n--- Columns ({df.shape[1]}) ---")
 for i, col in enumerate(df.columns, 1):
@@ -295,29 +391,48 @@ print(f"  [DONE] Filled NP_Type from Material_Category")
 print(f"  [DONE] Hydrodynamic > 1000nm -> NaN")
 print(f"  [DONE] |Zeta| > 100mV -> NaN")
 print(f"  [DONE] Same-label group dedup")
+print(f"  [DONE] Derived Toxicity_Level (4-class) + Toxicity_Label (binary) from Cell_Viability_pct")
 print(f"  [DONE] Dropped Cell_Viability_pct, Label_Viability_Flag")
 print(f"  [DONE] Dropped DOI_Reference")
+print(f"  [DONE] Exported full .xlsx + supervised ml_ready_dataset.csv")
 
-print(f"\n--- Toxicity_Binary ---")
+print(f"\n--- Toxicity_Binary (original string label) ---")
 print(df['Toxicity_Binary'].value_counts(dropna=False).to_string())
+
+print(f"\n--- Toxicity_Level (4-class from viability bands) ---")
+level_names = {
+    0: 'Low / Negligible  (80-100%)',
+    1: 'Mild to Moderate  (60-80%) ',
+    2: 'Significant       (40-60%) ',
+    3: 'High / Cell death  (<40%)  ',
+}
+for lvl, name in level_names.items():
+    count = (df['Toxicity_Level'] == lvl).sum()
+    print(f"  Level {lvl}  {name}  → {count:>5,} rows")
+nan_lvl = df['Toxicity_Level'].isna().sum()
+print(f"  NaN     (not determinable)                   → {nan_lvl:>5,} rows")
+
+print(f"\n--- Toxicity_Label (binary ML target) ---")
+print(f"  Threshold: <60% cell viability = Toxic (1)")
+print(df['Toxicity_Label'].value_counts(dropna=False).to_string())
+n_t  = (df['Toxicity_Label'] == 1).sum()
+n_nt = (df['Toxicity_Label'] == 0).sum()
+total = n_t + n_nt
+if total > 0:
+    print(f"  Class balance: {n_t/total*100:.1f}% Toxic  |  {n_nt/total*100:.1f}% Non-toxic")
 
 print(f"\n--- NP_Type ---")
 print(df['NP_Type'].value_counts(dropna=False).to_string())
 
-print(f"\n--- Top 15 Missing ---")
+print(f"\n--- Top 15 Missing (full dataset) ---")
 missing = df.isnull().sum().sort_values(ascending=False)
 for col in missing.head(15).index:
     if missing[col] > 0:
         pct = missing[col] / len(df) * 100
         print(f"  {col:<35s} {missing[col]:>5d} ({pct:.1f}%)")
 
-# %%
-output_path = DATA_DIR / 'version 2 dataset.xlsx'
-df.to_excel(output_path, index=False, engine='openpyxl')
-
-print(f"Saved: {output_path}")
-print(f"Shape: {df.shape[0]} rows x {df.shape[1]} columns")
-print(f"Original untouched at: {DATA_DIR / 'version 2 dataset - original.xlsx'}")
+print(f"\n--- Output Files ---")
+print(f"  Full dataset : {output_full}")
+print(f"  ML-ready CSV : {output_ml}")
+print(f"\n  Original untouched: {DATA_DIR / 'version 2 dataset - original.xlsx'}")
 print("\n[DONE] Pipeline complete.")
-
-
