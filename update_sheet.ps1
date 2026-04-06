@@ -49,6 +49,53 @@ try {
                 Write-Host "Updating Hydrodynamic Size"
             }
         }
+        elseif ($header -match "Viability") {
+            # Find the next empty column to insert the binary label and 4-tier level
+            $binaryCol = $cols + 1
+            $tierCol = $cols + 2
+            
+            $sheet.Cells.Item(1, $binaryCol).Value2 = "Toxicity_Label"
+            $sheet.Cells.Item(1, $tierCol).Value2 = "Toxicity_Level"
+            Write-Host "Deriving target variables from Cell Viability at index $i"
+
+            # Read all viability values
+            $range = $sheet.Range($sheet.Cells.Item(2, $i), $sheet.Cells.Item($sheet.UsedRange.Rows.Count, $i))
+            $vals = $range.Value2
+            
+            # Prepare arrays for new columns
+            $binaryVals = New-Object -TypeName 'System.Object[,]' -ArgumentList $vals.GetLength(0), 1
+            $tierVals = New-Object -TypeName 'System.Object[,]' -ArgumentList $vals.GetLength(0), 1
+
+            for ($r = 1; $r -le $vals.GetLength(0); $r++) {
+                $val = $vals[$r, 1]
+                if ($val -is [double] -or $val -is [int]) {
+                    # Binary Label: < 60% is toxic (1), >= 60% is non-toxic (0)
+                    if ($val -lt 60) {
+                        $binaryVals[$r, 1] = 1
+                    } else {
+                        $binaryVals[$r, 1] = 0
+                    }
+
+                    # 4-tier toxicity level
+                    if ($val -lt 40) {
+                        $tierVals[$r, 1] = "High Toxicity (<40%)"
+                    } elseif ($val -lt 60) {
+                        $tierVals[$r, 1] = "Significant Toxicity (40-60%)"
+                    } elseif ($val -lt 80) {
+                        $tierVals[$r, 1] = "Mild to Moderate Toxicity (60-80%)"
+                    } else {
+                        $tierVals[$r, 1] = "Low/Negligible Toxicity (80-100%)"
+                    }
+                } else {
+                    $binaryVals[$r, 1] = $null
+                    $tierVals[$r, 1] = $null
+                }
+            }
+            
+            # Write new columns
+            $sheet.Range($sheet.Cells.Item(2, $binaryCol), $sheet.Cells.Item($sheet.UsedRange.Rows.Count, $binaryCol)).Value2 = $binaryVals
+            $sheet.Range($sheet.Cells.Item(2, $tierCol), $sheet.Cells.Item($sheet.UsedRange.Rows.Count, $tierCol)).Value2 = $tierVals
+        }
     }
 
     $newPath = "C:\Users\admin\OneDrive\Desktop\Data_structure_python\updated sheet.xlsx"

@@ -24,8 +24,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-PROJECT_DIR = Path(r'E:\Python_programs\Work\Project Titan')
-DATA_DIR = PROJECT_DIR / 'src' / 'data'
+PROJECT_DIR = Path(r'C:\Users\admin\OneDrive\Desktop\Data_structure_python')
+DATA_DIR = PROJECT_DIR
 
 # Always load from the ORIGINAL backup
 df = pd.read_excel(DATA_DIR / 'version 2 dataset - original.xlsx', engine='openpyxl')
