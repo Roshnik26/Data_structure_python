@@ -346,7 +346,30 @@ print("\n[DONE] Step 12")
 
 # %% [markdown]
 # ---
-# ## Step 13: Export ML-Ready Dataset
+# ## Step 13: Log Transformations for Skewed Variables
+# 
+# Apply log1p transformation to dose and exposure time to reduce skewness.
+
+# %%
+skewed_cols = ['Dose_InVitro_Max_ugmL', 'Exposure_Time_h']
+print(f"Applying log1p transformation to: {skewed_cols}")
+
+for col in skewed_cols:
+    if col in df.columns:
+        # Print original skewness
+        skew_before = df[col].skew()
+        # Apply log1p to handle zeros gracefully
+        df[f'{col}_log'] = np.log1p(df[col])
+        skew_after = df[f'{col}_log'].skew()
+        print(f"  {col}: skewness {skew_before:.2f} -> {skew_after:.2f} ({col}_log)")
+    else:
+        print(f"  WARNING: {col} not found in the dataset.")
+
+print("\n[DONE] Step 13")
+
+# %% [markdown]
+# ---
+# ## Step 14: Export ML-Ready Dataset
 
 # %%
 # Full dataset (all rows, includes rows with NaN Toxicity_Label)
@@ -365,7 +388,7 @@ print(f"ML-ready CSV saved:      {output_ml}  [{df_ml.shape[0]} rows x {df_ml.sh
 
 # %% [markdown]
 # ---
-# ## Step 14: Final Summary
+# ## Step 15: Final Summary
 
 # %%
 print("=" * 60)
@@ -394,6 +417,7 @@ print(f"  [DONE] Same-label group dedup")
 print(f"  [DONE] Derived Toxicity_Level (4-class) + Toxicity_Label (binary) from Cell_Viability_pct")
 print(f"  [DONE] Dropped Cell_Viability_pct, Label_Viability_Flag")
 print(f"  [DONE] Dropped DOI_Reference")
+print(f"  [DONE] Applied log1p transformations to Dose and Exposure Time")
 print(f"  [DONE] Exported full .xlsx + supervised ml_ready_dataset.csv")
 
 print(f"\n--- Toxicity_Binary (original string label) ---")
