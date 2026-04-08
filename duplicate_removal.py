@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import os
 import warnings
 
 # Suppress openpyxl warnings if any
@@ -120,6 +121,13 @@ print(f"After Step 1:   {rows_after_step1:>6,} rows  (-{initial_rows - rows_afte
 print(f"After Step 2:   {rows_after_step2:>6,} rows  (-{rows_after_step1 - rows_after_step2})")
 print(f"Total removed:  {initial_rows - rows_after_step2:>6,} rows ({(initial_rows - rows_after_step2)/initial_rows*100:.1f}%)")
 
-print(f"\nSaving to: {OUTPUT_FILE}")
-df.to_excel(OUTPUT_FILE, index=False, engine='openpyxl')
-print("[DONE] Deduplication completely finished!")
+# === SAVE ===
+df.to_excel(OUTPUT_FILE, index=False, engine="openpyxl")
+print(f"\nSaved to: {os.path.basename(OUTPUT_FILE)}")
+
+# Verify file was created
+if os.path.exists(OUTPUT_FILE):
+    size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
+    print(f"\n>>> FILE CREATED: Deduplicated V2 dataset.xlsx ({size_mb:.2f} MB) <<<")
+else:
+    print("\n>>> ERROR: File was NOT created! Check path and permissions. <<<")
